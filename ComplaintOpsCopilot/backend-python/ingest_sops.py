@@ -31,7 +31,14 @@ def ingest_data():
     ]
     
     ids = [f"sop_{i}" for i in range(len(documents))]
-    metadatas = [{"source": "Bank_SOP_v1"} for _ in documents]
+    metadatas = [
+        {
+            "doc_name": "Bank SOPs",
+            "source": "Bank_SOP_v1",
+            "chunk_id": index,
+        }
+        for index, _ in enumerate(documents)
+    ]
 
     print(f"Adding {len(documents)} documents...")
     collection.add(
