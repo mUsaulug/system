@@ -62,19 +62,27 @@ class RAGRequest(BaseModel):
     text: str
     category: Optional[str] = None
 
+class SourceItem(BaseModel):
+    doc_name: str
+    source: str
+    snippet: str
+
 class RAGResponse(BaseModel):
     relevant_snippets: List[str]
+    sources: List[SourceItem]
 
 class GenerateRequest(BaseModel):
     text: str
     category: str
     urgency: str
     relevant_snippets: List[str]
+    sources: List[SourceItem] = []
 
 class GenerateResponse(BaseModel):
     action_plan: List[str]
     customer_reply_draft: str
     risk_flags: List[str]
+    sources: List[SourceItem]
 
 # --- Endpoints ---
 
@@ -112,24 +120,38 @@ def retrieve_docs(request: RAGRequest):
     from rag_manager import rag_manager
     sanitized = sanitize_input(request.text)
     log_sanitized_request("/retrieve", sanitized["masked_text"], sanitized["masked_entities"])
-    snippets = rag_manager.retrieve(sanitized["masked_text"])
-    return RAGResponse(relevant_snippets=snippets)
+    snippets, metadatas = rag_manager.retrieve(sanitized["masked_text"])
+    sources = [
+        {
+            "doc_name": metadata.get("doc_name", "Unknown"),
+            "source": metadata.get("source", "Unknown"),
+            "snippet": snippet,
+        }
+        for snippet, metadata in zip(snippets, metadatas)
+    ]
+    return RAGResponse(relevant_snippets=snippets, sources=sources)
 
 @app.post("/generate", response_model=GenerateResponse)
 def generate_response(request: GenerateRequest):
     from llm_client import llm_client
     sanitized = sanitize_input(request.text)
     log_sanitized_request("/generate", sanitized["masked_text"], sanitized["masked_entities"])
+    sources = request.sources or [
+        {"doc_name": "Unknown", "source": "Unknown", "snippet": snippet}
+        for snippet in request.relevant_snippets
+    ]
     result = llm_client.generate_response(
         text=sanitized["masked_text"],
         category=request.category,
         urgency=request.urgency,
-        snippets=request.relevant_snippets
+        snippets=request.relevant_snippets,
+        sources=sources
     )
     return GenerateResponse(
         action_plan=result["action_plan"],
         customer_reply_draft=result["customer_reply_draft"],
-        risk_flags=result["risk_flags"]
+        risk_flags=result["risk_flags"],
+        sources=result["sources"]
     )
 
 if __name__ == "__main__":

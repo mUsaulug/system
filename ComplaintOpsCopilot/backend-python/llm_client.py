@@ -40,6 +40,9 @@ class LLMClient:
         
         Relevant Procedures (SOPs):
         {context}
+
+        Sources (explicitly list in output as provided):
+        {sources_context}
         
         Customer Complaint:
         {text}
@@ -48,12 +51,20 @@ class LLMClient:
         1. Create a step-by-step action plan for the agent.
         2. Draft a polite, professional response to the customer in Turkish.
         3. Identify any risk flags (PII leak, legal threat, etc.).
+        4. Include the sources array in the output.
         
         {json_instruction}
         {{
             "action_plan": ["step 1", "step 2"],
             "customer_reply_draft": "string",
-            "risk_flags": ["flag1"]
+            "risk_flags": ["flag1"],
+            "sources": [
+                {{
+                    "doc_name": "string",
+                    "source": "string",
+                    "snippet": "string"
+                }}
+            ]
         }}
         """
 
