@@ -11,36 +11,31 @@ from sklearn.metrics import confusion_matrix, f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
-# 1. Create Synthetic Dataset
-data = [
-    # FRAUD_UNAUTHORIZED_TX
-    ("Kartımdan bilgim dışında 500 TL çekilmiş.", "FRAUD_UNAUTHORIZED_TX", "RED"),
-    ("Hesabımda tanımadığım bir işlem var, iptal edin.", "FRAUD_UNAUTHORIZED_TX", "RED"),
-    ("Kredi kartım çalındı, hemen kapatın.", "FRAUD_UNAUTHORIZED_TX", "RED"),
-    
-    # CHARGEBACK_DISPUTE
-    ("Aynı işlemden iki kere ücret alınmış.", "CHARGEBACK_DISPUTE", "YELLOW"),
-    ("İade ettiğim ürünün parası hala yatmadı.", "CHARGEBACK_DISPUTE", "YELLOW"),
-    ("Siparişi iptal ettim ama param iade edilmedi.", "CHARGEBACK_DISPUTE", "YELLOW"),
+dataset_path = os.path.join("data", "triage_dataset.json")
+if os.path.exists(dataset_path):
+    with open(dataset_path, "r", encoding="utf-8") as handle:
+        records = json.load(handle)
+else:
+    records = [
+        {"text": "Kartımdan bilgim dışında 500 TL çekilmiş.", "category": "FRAUD_UNAUTHORIZED_TX", "urgency": "RED"},
+        {"text": "Hesabımda tanımadığım bir işlem var, iptal edin.", "category": "FRAUD_UNAUTHORIZED_TX", "urgency": "RED"},
+        {"text": "Kredi kartım çalındı, hemen kapatın.", "category": "FRAUD_UNAUTHORIZED_TX", "urgency": "RED"},
+        {"text": "Aynı işlemden iki kere ücret alınmış.", "category": "CHARGEBACK_DISPUTE", "urgency": "YELLOW"},
+        {"text": "İade ettiğim ürünün parası hala yatmadı.", "category": "CHARGEBACK_DISPUTE", "urgency": "YELLOW"},
+        {"text": "Siparişi iptal ettim ama param iade edilmedi.", "category": "CHARGEBACK_DISPUTE", "urgency": "YELLOW"},
+        {"text": "Yaptığım EFT 3 saattir karşı hesaba geçmedi.", "category": "TRANSFER_DELAY", "urgency": "YELLOW"},
+        {"text": "Havale işlemim hala beklemede görünüyor.", "category": "TRANSFER_DELAY", "urgency": "YELLOW"},
+        {"text": "Para transferi yaptım ama ulaşmadı.", "category": "TRANSFER_DELAY", "urgency": "YELLOW"},
+        {"text": "Mobil uygulamaya giriş yapamıyorum.", "category": "ACCESS_LOGIN_MOBILE", "urgency": "RED"},
+        {"text": "Şifremi unuttum, yenileme linki gelmiyor.", "category": "ACCESS_LOGIN_MOBILE", "urgency": "RED"},
+        {"text": "İnternet bankacılığı açılmıyor, hata veriyor.", "category": "ACCESS_LOGIN_MOBILE", "urgency": "RED"},
+        {"text": "Kredi kartı limitimi nasıl arttırabilirim?", "category": "CARD_LIMIT_CREDIT", "urgency": "GREEN"},
+        {"text": "Şube çalışma saatleriniz nedir?", "category": "INFORMATION_REQUEST", "urgency": "GREEN"},
+        {"text": "Yeni kampanya detaylarını öğrenmek istiyorum.", "category": "CAMPAIGN_POINTS_REWARDS", "urgency": "GREEN"},
+        {"text": "IBAN numaramı nereden görebilirim?", "category": "INFORMATION_REQUEST", "urgency": "GREEN"},
+    ]
 
-    # TRANSFER_DELAY
-    ("Yaptığım EFT 3 saattir karşı hesaba geçmedi.", "TRANSFER_DELAY", "YELLOW"),
-    ("Havale işlemim hala beklemede görünüyor.", "TRANSFER_DELAY", "YELLOW"),
-    ("Para transferi yaptım ama ulaşmadı.", "TRANSFER_DELAY", "YELLOW"),
-
-    # TECHNICAL_ISSUE
-    ("Mobil uygulamaya giriş yapamıyorum.", "ACCESS_LOGIN_MOBILE", "RED"),
-    ("Şifremi unuttum, yenileme linki gelmiyor.", "ACCESS_LOGIN_MOBILE", "RED"),
-    ("İnternet bankacılığı açılmıyor, hata veriyor.", "ACCESS_LOGIN_MOBILE", "RED"),
-
-    # GENERAL_INFO
-    ("Kredi kartı limitimi nasıl arttırabilirim?", "CARD_LIMIT_CREDIT", "GREEN"),
-    ("Şube çalışma saatleriniz nedir?", "INFORMATION_REQUEST", "GREEN"),
-    ("Yeni kampanya detaylarını öğrenmek istiyorum.", "CAMPAIGN_POINTS_REWARDS", "GREEN"),
-     ("IBAN numaramı nereden görebilirim?", "INFORMATION_REQUEST", "GREEN"),
-]
-
-df = pd.DataFrame(data, columns=["text", "category", "urgency"])
+df = pd.DataFrame(records, columns=["text", "category", "urgency"])
 
 def hash_dataset(frame: pd.DataFrame) -> str:
     payload = "|".join(
