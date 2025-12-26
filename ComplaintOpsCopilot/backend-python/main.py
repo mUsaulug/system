@@ -81,6 +81,7 @@ class GenerateResponse(BaseModel):
     action_plan: List[str]
     customer_reply_draft: str
     risk_flags: List[str]
+    sources: List[SourceItem]
 
 # --- Endpoints ---
 
@@ -126,6 +127,10 @@ def generate_response(request: GenerateRequest):
     from llm_client import llm_client
     sanitized = sanitize_input(request.text)
     log_sanitized_request("/generate", sanitized["masked_text"], sanitized["masked_entities"])
+    sources = request.sources or [
+        {"doc_name": "Unknown", "source": "Unknown", "snippet": snippet}
+        for snippet in request.relevant_snippets
+    ]
     result = llm_client.generate_response(
         text=sanitized["masked_text"],
         category=request.category,
@@ -135,7 +140,8 @@ def generate_response(request: GenerateRequest):
     return GenerateResponse(
         action_plan=result["action_plan"],
         customer_reply_draft=result["customer_reply_draft"],
-        risk_flags=result["risk_flags"]
+        risk_flags=result["risk_flags"],
+        sources=result["sources"]
     )
 
 if __name__ == "__main__":

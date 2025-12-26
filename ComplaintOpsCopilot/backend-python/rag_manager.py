@@ -42,6 +42,6 @@ class RAGManager:
             return []
         except Exception as e:
             print(f"RAG Retrieve Error: {e}")
-            return []
+            return [], []
 
 rag_manager = RAGManager()
