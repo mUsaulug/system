@@ -7,7 +7,7 @@ import os
 import re
 from dotenv import load_dotenv
 
-from schemas import CATEGORY_VALUES, CategoryLiteral, SourceItem
+from schemas import SourceItem
 
 load_dotenv()
 

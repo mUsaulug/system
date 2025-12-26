@@ -5,7 +5,7 @@ import logging
 import os
 import uuid
 
-from schemas import CategoryLiteral, SourceItem
+from schemas import SourceItem
 
 # Initialize FastAPI app
 app = FastAPI(title="ComplaintOps AI Service", version="0.1.0")
@@ -68,6 +68,8 @@ class TriageResponse(BaseModel):
     urgency_confidence: float
     needs_human_review: bool
     model_loaded: bool
+    review_status: str
+    review_id: Optional[str] = None
 
 class RAGRequest(BaseModel):
     text: str
@@ -87,6 +89,15 @@ class GenerateResponse(BaseModel):
     customer_reply_draft: str
     risk_flags: List[str]
     sources: List[SourceItem]
+
+class ReviewActionRequest(BaseModel):
+    review_id: str
+    notes: Optional[str] = None
+
+class ReviewActionResponse(BaseModel):
+    review_id: str
+    status: str
+    notes: Optional[str] = None
 
 # --- Endpoints ---
 
@@ -122,6 +133,7 @@ def mask_pii(payload: MaskingRequest, request: Request):
 @app.post("/predict", response_model=TriageResponse)
 def predict_triage(payload: TriageRequest, request: Request):
     from triage_model import triage_engine
+    from review_store import review_store
     sanitized = sanitize_input(payload.text)
     log_sanitized_request(
         "/predict",
@@ -134,6 +146,19 @@ def predict_triage(payload: TriageRequest, request: Request):
         result["category_confidence"] < 0.60
         or result["urgency_confidence"] < 0.60
     )
+    review_id = None
+    review_status = "AUTO_APPROVED"
+    if needs_human_review:
+        review_id = str(uuid.uuid4())
+        review_store.create_review(
+            review_id=review_id,
+            masked_text=sanitized["masked_text"],
+            category=result["category"],
+            category_confidence=result["category_confidence"],
+            urgency=result["urgency"],
+            urgency_confidence=result["urgency_confidence"],
+        )
+        review_status = "PENDING_REVIEW"
     return TriageResponse(
         category=result["category"],
         category_confidence=result["category_confidence"],
@@ -141,6 +166,8 @@ def predict_triage(payload: TriageRequest, request: Request):
         urgency_confidence=result["urgency_confidence"],
         needs_human_review=needs_human_review,
         model_loaded=result["model_loaded"],
+        review_status=review_status,
+        review_id=review_id,
     )
 
 @app.post("/retrieve", response_model=RAGResponse)
@@ -197,6 +224,22 @@ def generate_response(payload: GenerateRequest, request: Request):
         risk_flags=list(dict.fromkeys(result["risk_flags"] + risk_flags)),
         sources=result["sources"]
     )
+
+@app.post("/review/approve", response_model=ReviewActionResponse)
+def approve_review(payload: ReviewActionRequest):
+    from review_store import review_store
+    record = review_store.update_review(payload.review_id, "APPROVED", payload.notes)
+    if not record:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return ReviewActionResponse(review_id=record.review_id, status=record.status, notes=record.notes)
+
+@app.post("/review/reject", response_model=ReviewActionResponse)
+def reject_review(payload: ReviewActionRequest):
+    from review_store import review_store
+    record = review_store.update_review(payload.review_id, "REJECTED", payload.notes)
+    if not record:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return ReviewActionResponse(review_id=record.review_id, status=record.status, notes=record.notes)
 
 if __name__ == "__main__":
     import uvicorn
