@@ -5,9 +5,7 @@ import logging
 import os
 import uuid
 
-from schemas import SourceItem
-
-from schemas import SourceItem
+from schemas import CategoryLiteral, SourceItem
 
 # Initialize FastAPI app
 app = FastAPI(title="ComplaintOps AI Service", version="0.1.0")
@@ -64,7 +62,7 @@ class TriageRequest(BaseModel):
     text: str
 
 class TriageResponse(BaseModel):
-    category: str
+    category: CategoryLiteral
     category_confidence: float
     urgency: str
     urgency_confidence: float
@@ -80,7 +78,7 @@ class RAGResponse(BaseModel):
 
 class GenerateRequest(BaseModel):
     text: str
-    category: str
+    category: CategoryLiteral
     urgency: str
     relevant_sources: List[SourceItem] = Field(default_factory=list)
 
