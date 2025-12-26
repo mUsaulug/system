@@ -5,6 +5,8 @@ import logging
 import os
 from dotenv import load_dotenv
 
+from schemas import SourceItem
+
 load_dotenv()
 
 logger = logging.getLogger("complaintops.llm_client")
@@ -14,6 +16,7 @@ class LLMResponse(BaseModel):
     action_plan: list[str] = Field(min_length=1)
     customer_reply_draft: str = Field(min_length=1)
     risk_flags: list[str] = Field(min_length=1)
+    sources: list[SourceItem] = Field(default_factory=list)
 
 class LLMClient:
     def __init__(self):
@@ -30,6 +33,12 @@ class LLMClient:
         context = "\n".join(
             f"[{item.get('doc_name', 'unknown')}:{item.get('chunk_id', 'unknown')}] "
             f"{item.get('snippet', '')}"
+            for item in snippets
+        )
+        sources_context = "\n".join(
+            f"- doc_name={item.get('doc_name', 'unknown')} "
+            f"chunk_id={item.get('chunk_id', 'unknown')} "
+            f"source={item.get('source', 'unknown')}\n  snippet={item.get('snippet', '')}"
             for item in snippets
         )
         json_instruction = (
@@ -90,7 +99,15 @@ class LLMClient:
             return {
                 "action_plan": ["Mock Step 1: Check System", "Mock Step 2: Inform Customer"],
                 "customer_reply_draft": f"Dear Customer, we received your {category} complaint (Urgency: {urgency}). We are working on it. (MOCK RESPONSE)",
-                "risk_flags": ["MOCK_MODE_ACTIVE"]
+                "risk_flags": ["MOCK_MODE_ACTIVE"],
+                "sources": [
+                    {
+                        "doc_name": "MockDoc",
+                        "source": "MockSource",
+                        "snippet": "Mock snippet",
+                        "chunk_id": "mock_chunk_0",
+                    }
+                ],
             }
 
         attempts = [
@@ -124,7 +141,15 @@ class LLMClient:
         return {
             "action_plan": ["Error calling LLM"],
             "customer_reply_draft": "System Error: Could not generate draft.",
-            "risk_flags": ["LLM_ERROR"]
+            "risk_flags": ["LLM_ERROR"],
+            "sources": [
+                {
+                    "doc_name": "Unknown",
+                    "source": "Unknown",
+                    "snippet": "No sources available due to LLM error.",
+                    "chunk_id": "unknown",
+                }
+            ],
         }
 
 llm_client = LLMClient()

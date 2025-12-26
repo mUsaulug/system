@@ -4,6 +4,8 @@ from typing import List, Optional
 import logging
 import os
 
+from schemas import SourceItem
+
 # Initialize FastAPI app
 app = FastAPI(title="ComplaintOps AI Service", version="0.1.0")
 
@@ -62,20 +64,14 @@ class RAGRequest(BaseModel):
     text: str
     category: Optional[str] = None
 
-class SourceSnippet(BaseModel):
-    snippet: str
-    source: str
-    doc_name: str
-    chunk_id: str
-
 class RAGResponse(BaseModel):
-    relevant_sources: List[SourceSnippet]
+    relevant_sources: List[SourceItem]
 
 class GenerateRequest(BaseModel):
     text: str
     category: str
     urgency: str
-    relevant_sources: List[SourceSnippet]
+    relevant_sources: List[SourceItem]
 
 class GenerateResponse(BaseModel):
     action_plan: List[str]
