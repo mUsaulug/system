@@ -2,6 +2,18 @@ import chromadb
 from chromadb.utils import embedding_functions
 import os
 
+def chunk_text(text: str, max_words: int = 120, overlap: int = 20) -> list[str]:
+    words = text.split()
+    chunks = []
+    start = 0
+    while start < len(words):
+        end = min(start + max_words, len(words))
+        chunks.append(" ".join(words[start:end]))
+        if end == len(words):
+            break
+        start = max(0, end - overlap)
+    return chunks
+
 def ingest_data():
     print("Initializing ChromaDB for ingestion...")
     db_path = os.path.join(os.getcwd(), "chroma_db")
@@ -29,15 +41,29 @@ def ingest_data():
         "Kart Aidatı İadesi: Yasal düzenlemelere göre, aktif kullanılan ve puan kazandıran kartlar için aidat yansıtılabilir. Ancak müşteri memnuniyeti adına %50 iade veya puan yüklemesi teklif edilebilir.",
         "İnternet Arızası: Genel arıza durumunda müşteriye 'Bölgenizde çalışma var, tahmini süre 4 saat' bilgisi verilir. Bireysel arızada modem resetleme adımları iletilir."
     ]
-    
-    ids = [f"sop_{i}" for i in range(len(documents))]
-    metadatas = [{"source": "Bank_SOP_v1"} for _ in documents]
 
-    print(f"Adding {len(documents)} documents...")
+    chunked_docs = []
+    ids = []
+    metadatas = []
+    for doc_index, doc in enumerate(documents):
+        doc_name = f"sop_{doc_index}"
+        for chunk_index, chunk in enumerate(chunk_text(doc)):
+            chunk_id = f"{doc_name}_chunk_{chunk_index}"
+            chunked_docs.append(chunk)
+            ids.append(chunk_id)
+            metadatas.append(
+                {
+                    "source": "Bank_SOP_v1",
+                    "doc_name": doc_name,
+                    "chunk_id": chunk_id,
+                }
+            )
+
+    print(f"Adding {len(chunked_docs)} chunks...")
     collection.add(
-        documents=documents,
+        documents=chunked_docs,
         ids=ids,
-        metadatas=metadatas
+        metadatas=metadatas,
     )
     print("Ingestion complete. ChromaDB is ready.")
 
