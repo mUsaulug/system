@@ -1,7 +1,8 @@
 import chromadb
 from chromadb.utils import embedding_functions
+import logging
 import os
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 class RAGManager:
     def __init__(self):
@@ -9,6 +10,8 @@ class RAGManager:
         # Persistent storage in ./chroma_db
         db_path = os.path.join(os.getcwd(), "chroma_db")
         self.client = chromadb.PersistentClient(path=db_path)
+        self.default_top_k = int(os.getenv("RAG_TOP_K", "4"))
+        self.logger = logging.getLogger("complaintops.rag_manager")
         
         # Use simple default embedding function (all-MiniLM-L6-v2)
         # Note: In production for Turkish, a multilingual model like 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2' is better
@@ -19,11 +22,19 @@ class RAGManager:
             embedding_function=self.embedding_fn
         )
 
-    def retrieve(self, query: str, n_results: int = 3) -> List[Dict[str, str]]:
+    def retrieve(
+        self,
+        query: str,
+        n_results: Optional[int] = None,
+        category: Optional[str] = None,
+    ) -> List[Dict[str, str]]:
         try:
+            resolved_top_k = n_results or self.default_top_k
+            where_filter = {"category": category} if category else None
             results = self.collection.query(
                 query_texts=[query],
-                n_results=n_results,
+                n_results=resolved_top_k,
+                where=where_filter,
                 include=["documents", "metadatas"]
             )
             # Flatten results list
@@ -41,7 +52,7 @@ class RAGManager:
                 ]
             return []
         except Exception as e:
-            print(f"RAG Retrieve Error: {e}")
-            return [], []
+            self.logger.error("RAG retrieve error: %s", e)
+            return []
 
 rag_manager = RAGManager()
