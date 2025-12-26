@@ -7,6 +7,8 @@ import uuid
 
 from schemas import SourceItem
 
+from schemas import SourceItem
+
 # Initialize FastAPI app
 app = FastAPI(title="ComplaintOps AI Service", version="0.1.0")
 
