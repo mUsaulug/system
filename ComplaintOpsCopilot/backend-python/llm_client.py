@@ -27,7 +27,11 @@ class LLMClient:
             self.client = OpenAI(api_key=api_key)
 
     def _build_prompt(self, text: str, category: str, urgency: str, snippets: list, strict_json: bool) -> str:
-        context = "\n".join(snippets)
+        context = "\n".join(
+            f"[{item.get('doc_name', 'unknown')}:{item.get('chunk_id', 'unknown')}] "
+            f"{item.get('snippet', '')}"
+            for item in snippets
+        )
         json_instruction = (
             "Return ONLY valid JSON with double quotes and no markdown or code fences."
             if strict_json
@@ -38,7 +42,7 @@ class LLMClient:
         Valid Categories: {category}
         Urgency: {urgency}
         
-        Relevant Procedures (SOPs):
+        Relevant Procedures (SOPs) with sources:
         {context}
 
         Sources (explicitly list in output as provided):

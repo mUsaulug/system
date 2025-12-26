@@ -1,7 +1,7 @@
 import chromadb
 from chromadb.utils import embedding_functions
 import os
-from typing import List, Tuple, Dict, Any
+from typing import List, Dict
 
 class RAGManager:
     def __init__(self):
@@ -19,18 +19,27 @@ class RAGManager:
             embedding_function=self.embedding_fn
         )
 
-    def retrieve(self, query: str, n_results: int = 3) -> Tuple[List[str], List[Dict[str, Any]]]:
+    def retrieve(self, query: str, n_results: int = 3) -> List[Dict[str, str]]:
         try:
             results = self.collection.query(
                 query_texts=[query],
-                n_results=n_results
+                n_results=n_results,
+                include=["documents", "metadatas"]
             )
             # Flatten results list
             if results["documents"]:
                 documents = results["documents"][0]
-                metadatas = results.get("metadatas", [[]])[0]
-                return documents, metadatas
-            return [], []
+                metadatas = results["metadatas"][0]
+                return [
+                    {
+                        "snippet": doc,
+                        "source": metadata.get("source", "unknown"),
+                        "doc_name": metadata.get("doc_name", "unknown"),
+                        "chunk_id": metadata.get("chunk_id", "unknown"),
+                    }
+                    for doc, metadata in zip(documents, metadatas)
+                ]
+            return []
         except Exception as e:
             print(f"RAG Retrieve Error: {e}")
             return [], []

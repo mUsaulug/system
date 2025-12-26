@@ -62,21 +62,20 @@ class RAGRequest(BaseModel):
     text: str
     category: Optional[str] = None
 
-class SourceItem(BaseModel):
-    doc_name: str
-    source: str
+class SourceSnippet(BaseModel):
     snippet: str
+    source: str
+    doc_name: str
+    chunk_id: str
 
 class RAGResponse(BaseModel):
-    relevant_snippets: List[str]
-    sources: List[SourceItem]
+    relevant_sources: List[SourceSnippet]
 
 class GenerateRequest(BaseModel):
     text: str
     category: str
     urgency: str
-    relevant_snippets: List[str]
-    sources: List[SourceItem] = []
+    relevant_sources: List[SourceSnippet]
 
 class GenerateResponse(BaseModel):
     action_plan: List[str]
@@ -120,16 +119,8 @@ def retrieve_docs(request: RAGRequest):
     from rag_manager import rag_manager
     sanitized = sanitize_input(request.text)
     log_sanitized_request("/retrieve", sanitized["masked_text"], sanitized["masked_entities"])
-    snippets, metadatas = rag_manager.retrieve(sanitized["masked_text"])
-    sources = [
-        {
-            "doc_name": metadata.get("doc_name", "Unknown"),
-            "source": metadata.get("source", "Unknown"),
-            "snippet": snippet,
-        }
-        for snippet, metadata in zip(snippets, metadatas)
-    ]
-    return RAGResponse(relevant_snippets=snippets, sources=sources)
+    sources = rag_manager.retrieve(sanitized["masked_text"])
+    return RAGResponse(relevant_sources=sources)
 
 @app.post("/generate", response_model=GenerateResponse)
 def generate_response(request: GenerateRequest):
@@ -144,8 +135,7 @@ def generate_response(request: GenerateRequest):
         text=sanitized["masked_text"],
         category=request.category,
         urgency=request.urgency,
-        snippets=request.relevant_snippets,
-        sources=sources
+        snippets=[source.model_dump() for source in request.relevant_sources]
     )
     return GenerateResponse(
         action_plan=result["action_plan"],
