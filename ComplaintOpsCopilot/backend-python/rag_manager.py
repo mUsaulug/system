@@ -1,7 +1,7 @@
 import chromadb
 from chromadb.utils import embedding_functions
 import os
-from typing import List
+from typing import List, Tuple, Dict, Any
 
 class RAGManager:
     def __init__(self):
@@ -19,7 +19,7 @@ class RAGManager:
             embedding_function=self.embedding_fn
         )
 
-    def retrieve(self, query: str, n_results: int = 3) -> List[str]:
+    def retrieve(self, query: str, n_results: int = 3) -> Tuple[List[str], List[Dict[str, Any]]]:
         try:
             results = self.collection.query(
                 query_texts=[query],
@@ -27,10 +27,12 @@ class RAGManager:
             )
             # Flatten results list
             if results["documents"]:
-                return results["documents"][0]
-            return []
+                documents = results["documents"][0]
+                metadatas = results.get("metadatas", [[]])[0]
+                return documents, metadatas
+            return [], []
         except Exception as e:
             print(f"RAG Retrieve Error: {e}")
-            return []
+            return [], []
 
 rag_manager = RAGManager()

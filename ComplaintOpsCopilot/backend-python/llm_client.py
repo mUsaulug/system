@@ -9,10 +9,16 @@ load_dotenv()
 
 logger = logging.getLogger("complaintops.llm_client")
 
+class SourceItem(BaseModel):
+    doc_name: str
+    source: str
+    snippet: str
+
 class LLMResponse(BaseModel):
     action_plan: list[str] = Field(min_length=1)
     customer_reply_draft: str = Field(min_length=1)
     risk_flags: list[str]
+    sources: list[SourceItem] = Field(min_length=1)
 
 class LLMClient:
     def __init__(self):
@@ -25,8 +31,17 @@ class LLMClient:
         else:
             self.client = OpenAI(api_key=api_key)
 
-    def _build_prompt(self, text: str, category: str, urgency: str, snippets: list, strict_json: bool) -> str:
+    def _build_prompt(
+        self,
+        text: str,
+        category: str,
+        urgency: str,
+        snippets: list,
+        sources: list,
+        strict_json: bool,
+    ) -> str:
         context = "\n".join(snippets)
+        sources_context = json.dumps(sources, ensure_ascii=False, indent=2)
         json_instruction = (
             "Return ONLY valid JSON with double quotes and no markdown or code fences."
             if strict_json
@@ -39,6 +54,9 @@ class LLMClient:
         
         Relevant Procedures (SOPs):
         {context}
+
+        Sources (explicitly list in output as provided):
+        {sources_context}
         
         Customer Complaint:
         {text}
@@ -47,12 +65,20 @@ class LLMClient:
         1. Create a step-by-step action plan for the agent.
         2. Draft a polite, professional response to the customer in Turkish.
         3. Identify any risk flags (PII leak, legal threat, etc.).
+        4. Include the sources array in the output.
         
         {json_instruction}
         {{
             "action_plan": ["step 1", "step 2"],
             "customer_reply_draft": "string",
-            "risk_flags": ["flag1"]
+            "risk_flags": ["flag1"],
+            "sources": [
+                {{
+                    "doc_name": "string",
+                    "source": "string",
+                    "snippet": "string"
+                }}
+            ]
         }}
         """
 
@@ -64,17 +90,25 @@ class LLMClient:
         validated = LLMResponse.model_validate(parsed)
         return validated.model_dump()
 
-    def generate_response(self, text: str, category: str, urgency: str, snippets: list) -> dict:
+    def generate_response(
+        self,
+        text: str,
+        category: str,
+        urgency: str,
+        snippets: list,
+        sources: list,
+    ) -> dict:
         if self.mock_mode:
             return {
                 "action_plan": ["Mock Step 1: Check System", "Mock Step 2: Inform Customer"],
                 "customer_reply_draft": f"Dear Customer, we received your {category} complaint (Urgency: {urgency}). We are working on it. (MOCK RESPONSE)",
-                "risk_flags": ["MOCK_MODE_ACTIVE"]
+                "risk_flags": ["MOCK_MODE_ACTIVE"],
+                "sources": sources
             }
 
         attempts = [
-            self._build_prompt(text, category, urgency, snippets, strict_json=False),
-            self._build_prompt(text, category, urgency, snippets, strict_json=True),
+            self._build_prompt(text, category, urgency, snippets, sources, strict_json=False),
+            self._build_prompt(text, category, urgency, snippets, sources, strict_json=True),
         ]
 
         for index, prompt in enumerate(attempts, start=1):
@@ -99,7 +133,8 @@ class LLMClient:
         return {
             "action_plan": ["Error calling LLM"],
             "customer_reply_draft": "System Error: Could not generate draft.",
-            "risk_flags": ["LLM_ERROR"]
+            "risk_flags": ["LLM_ERROR"],
+            "sources": sources
         }
 
 llm_client = LLMClient()
