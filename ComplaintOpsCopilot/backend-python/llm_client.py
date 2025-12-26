@@ -1,5 +1,5 @@
 from openai import OpenAI
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import json
 import logging
 import os
@@ -9,16 +9,11 @@ load_dotenv()
 
 logger = logging.getLogger("complaintops.llm_client")
 
-class SourceItem(BaseModel):
-    doc_name: str
-    source: str
-    snippet: str
-
 class LLMResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     action_plan: list[str] = Field(min_length=1)
     customer_reply_draft: str = Field(min_length=1)
-    risk_flags: list[str]
-    sources: list[SourceItem] = Field(min_length=1)
+    risk_flags: list[str] = Field(min_length=1)
 
 class LLMClient:
     def __init__(self):
@@ -26,22 +21,13 @@ class LLMClient:
         api_key = os.getenv("OPENAI_API_KEY")
         self.mock_mode = False
         if not api_key:
-            print("Warning: OPENAI_API_KEY not found. Using Mock Mode.")
+            logger.warning("OPENAI_API_KEY not found. Using mock mode.")
             self.mock_mode = True
         else:
             self.client = OpenAI(api_key=api_key)
 
-    def _build_prompt(
-        self,
-        text: str,
-        category: str,
-        urgency: str,
-        snippets: list,
-        sources: list,
-        strict_json: bool,
-    ) -> str:
+    def _build_prompt(self, text: str, category: str, urgency: str, snippets: list, strict_json: bool) -> str:
         context = "\n".join(snippets)
-        sources_context = json.dumps(sources, ensure_ascii=False, indent=2)
         json_instruction = (
             "Return ONLY valid JSON with double quotes and no markdown or code fences."
             if strict_json
@@ -90,25 +76,17 @@ class LLMClient:
         validated = LLMResponse.model_validate(parsed)
         return validated.model_dump()
 
-    def generate_response(
-        self,
-        text: str,
-        category: str,
-        urgency: str,
-        snippets: list,
-        sources: list,
-    ) -> dict:
+    def generate_response(self, text: str, category: str, urgency: str, snippets: list) -> dict:
         if self.mock_mode:
             return {
                 "action_plan": ["Mock Step 1: Check System", "Mock Step 2: Inform Customer"],
                 "customer_reply_draft": f"Dear Customer, we received your {category} complaint (Urgency: {urgency}). We are working on it. (MOCK RESPONSE)",
-                "risk_flags": ["MOCK_MODE_ACTIVE"],
-                "sources": sources
+                "risk_flags": ["MOCK_MODE_ACTIVE"]
             }
 
         attempts = [
-            self._build_prompt(text, category, urgency, snippets, sources, strict_json=False),
-            self._build_prompt(text, category, urgency, snippets, sources, strict_json=True),
+            self._build_prompt(text, category, urgency, snippets, strict_json=False),
+            self._build_prompt(text, category, urgency, snippets, strict_json=True),
         ]
 
         for index, prompt in enumerate(attempts, start=1):
@@ -116,7 +94,7 @@ class LLMClient:
                 response = self.client.chat.completions.create(
                     model="gpt-3.5-turbo", # or gpt-4
                     messages=[
-                        {"role": "system", "content": "You are a helpful AI assistant that outputs JSON."},
+                        {"role": "system", "content": "You are a helpful AI assistant. Output only valid JSON, no markdown or code fences."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.3,
@@ -133,8 +111,7 @@ class LLMClient:
         return {
             "action_plan": ["Error calling LLM"],
             "customer_reply_draft": "System Error: Could not generate draft.",
-            "risk_flags": ["LLM_ERROR"],
-            "sources": sources
+            "risk_flags": ["LLM_ERROR"]
         }
 
 llm_client = LLMClient()
