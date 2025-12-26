@@ -62,7 +62,7 @@ class TriageRequest(BaseModel):
     text: str
 
 class TriageResponse(BaseModel):
-    category: str
+    category: CategoryLiteral
     category_confidence: float
     urgency: str
     urgency_confidence: float
@@ -80,7 +80,7 @@ class RAGResponse(BaseModel):
 
 class GenerateRequest(BaseModel):
     text: str
-    category: str
+    category: CategoryLiteral
     urgency: str
     relevant_sources: List[SourceItem] = Field(default_factory=list)
 

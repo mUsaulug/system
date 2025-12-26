@@ -1,5 +1,6 @@
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from typing import Optional
 import json
 import logging
 import os
@@ -12,10 +13,13 @@ load_dotenv()
 
 logger = logging.getLogger("complaintops.llm_client")
 
+VALID_CATEGORIES = list(CATEGORY_VALUES)
+
 class LLMResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action_plan: list[str] = Field(min_length=1)
     customer_reply_draft: str = Field(min_length=1)
+    category: Optional[CategoryLiteral] = None
     risk_flags: list[str] = Field(min_length=1)
     sources: list[SourceItem] = Field(default_factory=list)
 
@@ -54,9 +58,11 @@ class LLMClient:
             if strict_json
             else "Output JSON Format:"
         )
+        valid_categories = ", ".join(VALID_CATEGORIES)
         return f"""
         You are a helpful banking customer support assistant.
-        Valid Categories: {category}
+        Valid Categories: {valid_categories}
+        Category: {category}
         Urgency: {urgency}
         
         Relevant Procedures (SOPs) with sources:
