@@ -1,8 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import logging
 import os
+import uuid
+
+from schemas import SourceItem
 
 from schemas import SourceItem
 
@@ -23,10 +26,16 @@ def sanitize_input(text: str) -> dict:
         "original_text": result["original_text"],
     }
 
-def log_sanitized_request(endpoint: str, masked_text: str, masked_entities: List[str]) -> None:
+def log_sanitized_request(
+    endpoint: str,
+    masked_text: str,
+    masked_entities: List[str],
+    request_id: str,
+) -> None:
     logger.info(
-        "request_received endpoint=%s masked_text_length=%s masked_entity_types=%s",
+        "request_received endpoint=%s request_id=%s masked_text_length=%s masked_entity_types=%s",
         endpoint,
+        request_id,
         len(masked_text),
         ",".join(masked_entities),
     )
@@ -60,6 +69,7 @@ class TriageResponse(BaseModel):
     urgency: str
     urgency_confidence: float
     needs_human_review: bool
+    model_loaded: bool
 
 class RAGRequest(BaseModel):
     text: str
@@ -82,14 +92,27 @@ class GenerateResponse(BaseModel):
 
 # --- Endpoints ---
 
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
 @app.get("/")
 def read_root():
     return {"message": "ComplaintOps AI Service is running"}
 
 @app.post("/mask", response_model=MaskingResponse)
-def mask_pii(request: MaskingRequest):
-    result = sanitize_input(request.text)
-    log_sanitized_request("/mask", result["masked_text"], result["masked_entities"])
+def mask_pii(payload: MaskingRequest, request: Request):
+    result = sanitize_input(payload.text)
+    log_sanitized_request(
+        "/mask",
+        result["masked_text"],
+        result["masked_entities"],
+        request.state.request_id,
+    )
     response_payload = {
         "masked_text": result["masked_text"],
         "masked_entities": result["masked_entities"],
@@ -99,10 +122,15 @@ def mask_pii(request: MaskingRequest):
     return MaskingResponse(**response_payload)
 
 @app.post("/predict", response_model=TriageResponse)
-def predict_triage(request: TriageRequest):
+def predict_triage(payload: TriageRequest, request: Request):
     from triage_model import triage_engine
-    sanitized = sanitize_input(request.text)
-    log_sanitized_request("/predict", sanitized["masked_text"], sanitized["masked_entities"])
+    sanitized = sanitize_input(payload.text)
+    log_sanitized_request(
+        "/predict",
+        sanitized["masked_text"],
+        sanitized["masked_entities"],
+        request.state.request_id,
+    )
     result = triage_engine.predict(sanitized["masked_text"])
     needs_human_review = (
         result["category_confidence"] < 0.60
@@ -114,29 +142,40 @@ def predict_triage(request: TriageRequest):
         urgency=result["urgency"],
         urgency_confidence=result["urgency_confidence"],
         needs_human_review=needs_human_review,
+        model_loaded=result["model_loaded"],
     )
 
 @app.post("/retrieve", response_model=RAGResponse)
-def retrieve_docs(request: RAGRequest):
+def retrieve_docs(payload: RAGRequest, request: Request):
     from rag_manager import rag_manager
-    sanitized = sanitize_input(request.text)
-    log_sanitized_request("/retrieve", sanitized["masked_text"], sanitized["masked_entities"])
-    sources = rag_manager.retrieve(sanitized["masked_text"], category=request.category)
+    sanitized = sanitize_input(payload.text)
+    log_sanitized_request(
+        "/retrieve",
+        sanitized["masked_text"],
+        sanitized["masked_entities"],
+        request.state.request_id,
+    )
+    sources = rag_manager.retrieve(sanitized["masked_text"], category=payload.category)
     return RAGResponse(relevant_sources=sources)
 
 @app.post("/generate", response_model=GenerateResponse)
-def generate_response(request: GenerateRequest):
+def generate_response(payload: GenerateRequest, request: Request):
     from llm_client import llm_client
     from rag_manager import rag_manager
-    sanitized = sanitize_input(request.text)
-    log_sanitized_request("/generate", sanitized["masked_text"], sanitized["masked_entities"])
+    sanitized = sanitize_input(payload.text)
+    log_sanitized_request(
+        "/generate",
+        sanitized["masked_text"],
+        sanitized["masked_entities"],
+        request.state.request_id,
+    )
     risk_flags = []
-    sources = request.relevant_sources
+    sources = payload.relevant_sources
     if not sources:
         try:
             sources = rag_manager.retrieve(
                 sanitized["masked_text"],
-                category=request.category,
+                category=payload.category,
             )
             if not sources:
                 risk_flags.append("RAG_EMPTY_SOURCES")
@@ -147,8 +186,8 @@ def generate_response(request: GenerateRequest):
             sources = []
     result = llm_client.generate_response(
         text=sanitized["masked_text"],
-        category=request.category,
-        urgency=request.urgency,
+        category=payload.category,
+        urgency=payload.urgency,
         snippets=[
             source.model_dump() if isinstance(source, SourceItem) else source
             for source in sources

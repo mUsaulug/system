@@ -1,5 +1,6 @@
 import chromadb
 from chromadb.utils import embedding_functions
+import logging
 import os
 from typing import List, Dict, Optional
 
@@ -10,6 +11,7 @@ class RAGManager:
         db_path = os.path.join(os.getcwd(), "chroma_db")
         self.client = chromadb.PersistentClient(path=db_path)
         self.default_top_k = int(os.getenv("RAG_TOP_K", "4"))
+        self.logger = logging.getLogger("complaintops.rag_manager")
         
         # Use simple default embedding function (all-MiniLM-L6-v2)
         # Note: In production for Turkish, a multilingual model like 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2' is better
@@ -50,7 +52,7 @@ class RAGManager:
                 ]
             return []
         except Exception as e:
-            print(f"RAG Retrieve Error: {e}")
+            self.logger.error("RAG retrieve error: %s", e)
             return []
 
 rag_manager = RAGManager()
