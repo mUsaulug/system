@@ -4,13 +4,15 @@ from typing import List, Optional
 import logging
 import os
 
+from schemas import SourceItem
+
 # Initialize FastAPI app
 app = FastAPI(title="ComplaintOps AI Service", version="0.1.0")
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("complaintops.ai_service")
 
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+ALLOW_RAW_PII_RESPONSE = os.getenv("ALLOW_RAW_PII_RESPONSE", "false").lower() == "true"
 
 def sanitize_input(text: str) -> dict:
     from pii_masker import masker
@@ -62,20 +64,14 @@ class RAGRequest(BaseModel):
     text: str
     category: Optional[str] = None
 
-class SourceSnippet(BaseModel):
-    snippet: str
-    source: str
-    doc_name: str
-    chunk_id: str
-
 class RAGResponse(BaseModel):
-    relevant_sources: List[SourceSnippet]
+    relevant_sources: List[SourceItem]
 
 class GenerateRequest(BaseModel):
     text: str
     category: str
     urgency: str
-    relevant_sources: List[SourceSnippet]
+    relevant_sources: List[SourceItem]
 
 class GenerateResponse(BaseModel):
     action_plan: List[str]
@@ -97,7 +93,7 @@ def mask_pii(request: MaskingRequest):
         "masked_text": result["masked_text"],
         "masked_entities": result["masked_entities"],
     }
-    if DEBUG_MODE:
+    if ALLOW_RAW_PII_RESPONSE:
         response_payload["original_text"] = result["original_text"]
     return MaskingResponse(**response_payload)
 
@@ -119,7 +115,7 @@ def retrieve_docs(request: RAGRequest):
     from rag_manager import rag_manager
     sanitized = sanitize_input(request.text)
     log_sanitized_request("/retrieve", sanitized["masked_text"], sanitized["masked_entities"])
-    sources = rag_manager.retrieve(sanitized["masked_text"])
+    sources = rag_manager.retrieve(sanitized["masked_text"], category=request.category)
     return RAGResponse(relevant_sources=sources)
 
 @app.post("/generate", response_model=GenerateResponse)
