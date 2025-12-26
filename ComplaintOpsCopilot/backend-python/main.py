@@ -1,17 +1,18 @@
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import List, Optional
-import logging
 import os
 import uuid
 
 from schemas import SourceItem
+from constants import CategoryLiteral
+from logging_config import configure_logging, get_logger, request_id_var
 
 # Initialize FastAPI app
 app = FastAPI(title="ComplaintOps AI Service", version="0.1.0")
 
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-logger = logging.getLogger("complaintops.ai_service")
+configure_logging()
+logger = get_logger("complaintops.ai_service")
 
 ALLOW_RAW_PII_RESPONSE = os.getenv("ALLOW_RAW_PII_RESPONSE", "false").lower() == "true"
 
@@ -89,6 +90,7 @@ class GenerateResponse(BaseModel):
     customer_reply_draft: str
     risk_flags: List[str]
     sources: List[SourceItem]
+    error_code: Optional[str] = None
 
 class ReviewActionRequest(BaseModel):
     review_id: str
@@ -105,6 +107,7 @@ class ReviewActionResponse(BaseModel):
 async def add_request_id(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     request.state.request_id = request_id
+    request_id_var.set(request_id)
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
     return response
@@ -222,7 +225,8 @@ def generate_response(payload: GenerateRequest, request: Request):
         action_plan=result["action_plan"],
         customer_reply_draft=result["customer_reply_draft"],
         risk_flags=list(dict.fromkeys(result["risk_flags"] + risk_flags)),
-        sources=result["sources"]
+        sources=result["sources"],
+        error_code=result.get("error_code"),
     )
 
 @app.post("/review/approve", response_model=ReviewActionResponse)

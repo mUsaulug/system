@@ -1,8 +1,9 @@
 import chromadb
 from chromadb.utils import embedding_functions
-import logging
 import os
 from typing import List, Dict, Optional
+
+from logging_config import get_logger
 
 class RAGManager:
     def __init__(self):
@@ -11,7 +12,7 @@ class RAGManager:
         db_path = os.path.join(os.getcwd(), "chroma_db")
         self.client = chromadb.PersistentClient(path=db_path)
         self.default_top_k = int(os.getenv("RAG_TOP_K", "4"))
-        self.logger = logging.getLogger("complaintops.rag_manager")
+        self.logger = get_logger("complaintops.rag_manager")
         
         # Use simple default embedding function (all-MiniLM-L6-v2)
         # Note: In production for Turkish, a multilingual model like 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2' is better

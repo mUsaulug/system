@@ -2,16 +2,17 @@ from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from typing import Optional
 import json
-import logging
 import os
 import re
 from dotenv import load_dotenv
 
 from schemas import SourceItem
+from constants import CATEGORY_VALUES, CategoryLiteral
+from logging_config import get_logger
 
 load_dotenv()
 
-logger = logging.getLogger("complaintops.llm_client")
+logger = get_logger("complaintops.llm_client")
 
 VALID_CATEGORIES = list(CATEGORY_VALUES)
 
@@ -134,6 +135,7 @@ class LLMClient:
                         "chunk_id": "mock_chunk_0",
                     }
                 ],
+                "error_code": None,
             }
 
         attempts = [
@@ -156,18 +158,33 @@ class LLMClient:
                 combined_output = " ".join(parsed["action_plan"]) + " " + parsed["customer_reply_draft"]
                 if self._detect_pii(combined_output):
                     parsed["risk_flags"] = list(dict.fromkeys(parsed["risk_flags"] + ["PII_LEAK_DETECTED"]))
+                parsed["error_code"] = None
                 return parsed
             except (json.JSONDecodeError, ValidationError) as e:
                 logger.warning("LLM JSON validation failed on attempt %s: %s", index, e)
                 continue
             except Exception as e:
                 logger.error("LLM Error on attempt %s: %s", index, e)
-                break
+                error_code = "LLM_API_ERROR"
+                return {
+                    "action_plan": ["Error calling LLM"],
+                    "customer_reply_draft": "System Error: Could not generate draft.",
+                    "risk_flags": ["LLM_ERROR", error_code],
+                    "sources": [
+                        {
+                            "doc_name": "Unknown",
+                            "source": "Unknown",
+                            "snippet": "No sources available due to LLM error.",
+                            "chunk_id": "unknown",
+                        }
+                    ],
+                    "error_code": error_code,
+                }
 
         return {
             "action_plan": ["Error calling LLM"],
             "customer_reply_draft": "System Error: Could not generate draft.",
-            "risk_flags": ["LLM_ERROR"],
+            "risk_flags": ["LLM_ERROR", "LLM_VALIDATION_ERROR"],
             "sources": [
                 {
                     "doc_name": "Unknown",
@@ -176,6 +193,7 @@ class LLMClient:
                     "chunk_id": "unknown",
                 }
             ],
+            "error_code": "LLM_VALIDATION_ERROR",
         }
 
 llm_client = LLMClient()
