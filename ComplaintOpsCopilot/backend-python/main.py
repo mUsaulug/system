@@ -10,7 +10,7 @@ app = FastAPI(title="ComplaintOps AI Service", version="0.1.0")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("complaintops.ai_service")
 
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+ALLOW_RAW_PII_RESPONSE = os.getenv("ALLOW_RAW_PII_RESPONSE", "false").lower() == "true"
 
 def sanitize_input(text: str) -> dict:
     from pii_masker import masker
@@ -97,7 +97,7 @@ def mask_pii(request: MaskingRequest):
         "masked_text": result["masked_text"],
         "masked_entities": result["masked_entities"],
     }
-    if DEBUG_MODE:
+    if ALLOW_RAW_PII_RESPONSE:
         response_payload["original_text"] = result["original_text"]
     return MaskingResponse(**response_payload)
 

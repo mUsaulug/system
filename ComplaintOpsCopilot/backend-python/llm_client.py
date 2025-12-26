@@ -80,6 +80,11 @@ class LLMClient:
         validated = LLMResponse.model_validate(parsed)
         return validated.model_dump()
 
+    def _detect_pii(self, text: str) -> bool:
+        from pii_masker import masker
+        result = masker.mask(text)
+        return result["masked_text"] != text
+
     def generate_response(self, text: str, category: str, urgency: str, snippets: list) -> dict:
         if self.mock_mode:
             return {
@@ -104,7 +109,11 @@ class LLMClient:
                     temperature=0.3,
                 )
                 content = response.choices[0].message.content
-                return self._parse_and_validate(content)
+                parsed = self._parse_and_validate(content)
+                combined_output = " ".join(parsed["action_plan"]) + " " + parsed["customer_reply_draft"]
+                if self._detect_pii(combined_output):
+                    parsed["risk_flags"] = list(dict.fromkeys(parsed["risk_flags"] + ["PII_LEAK_DETECTED"]))
+                return parsed
             except (json.JSONDecodeError, ValidationError) as e:
                 logger.warning("LLM JSON validation failed on attempt %s: %s", index, e)
                 continue
