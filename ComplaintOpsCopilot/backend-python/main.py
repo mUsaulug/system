@@ -115,7 +115,7 @@ def retrieve_docs(request: RAGRequest):
     from rag_manager import rag_manager
     sanitized = sanitize_input(request.text)
     log_sanitized_request("/retrieve", sanitized["masked_text"], sanitized["masked_entities"])
-    sources = rag_manager.retrieve(sanitized["masked_text"])
+    sources = rag_manager.retrieve(sanitized["masked_text"], category=request.category)
     return RAGResponse(relevant_sources=sources)
 
 @app.post("/generate", response_model=GenerateResponse)
