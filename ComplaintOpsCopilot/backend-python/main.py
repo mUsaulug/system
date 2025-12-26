@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 import logging
 import os
@@ -59,6 +59,7 @@ class TriageResponse(BaseModel):
     category_confidence: float
     urgency: str
     urgency_confidence: float
+    needs_human_review: bool
 
 class RAGRequest(BaseModel):
     text: str
@@ -71,7 +72,7 @@ class GenerateRequest(BaseModel):
     text: str
     category: str
     urgency: str
-    relevant_sources: List[SourceItem]
+    relevant_sources: List[SourceItem] = Field(default_factory=list)
 
 class GenerateResponse(BaseModel):
     action_plan: List[str]
@@ -103,11 +104,16 @@ def predict_triage(request: TriageRequest):
     sanitized = sanitize_input(request.text)
     log_sanitized_request("/predict", sanitized["masked_text"], sanitized["masked_entities"])
     result = triage_engine.predict(sanitized["masked_text"])
+    needs_human_review = (
+        result["category_confidence"] < 0.60
+        or result["urgency_confidence"] < 0.60
+    )
     return TriageResponse(
         category=result["category"],
         category_confidence=result["category_confidence"],
         urgency=result["urgency"],
-        urgency_confidence=result["urgency_confidence"]
+        urgency_confidence=result["urgency_confidence"],
+        needs_human_review=needs_human_review,
     )
 
 @app.post("/retrieve", response_model=RAGResponse)
@@ -121,22 +127,37 @@ def retrieve_docs(request: RAGRequest):
 @app.post("/generate", response_model=GenerateResponse)
 def generate_response(request: GenerateRequest):
     from llm_client import llm_client
+    from rag_manager import rag_manager
     sanitized = sanitize_input(request.text)
     log_sanitized_request("/generate", sanitized["masked_text"], sanitized["masked_entities"])
-    sources = request.sources or [
-        {"doc_name": "Unknown", "source": "Unknown", "snippet": snippet}
-        for snippet in request.relevant_snippets
-    ]
+    risk_flags = []
+    sources = request.relevant_sources
+    if not sources:
+        try:
+            sources = rag_manager.retrieve(
+                sanitized["masked_text"],
+                category=request.category,
+            )
+            if not sources:
+                risk_flags.append("RAG_EMPTY_SOURCES")
+            else:
+                risk_flags.append("RAG_FALLBACK_USED")
+        except Exception:
+            risk_flags.append("RAG_UNAVAILABLE")
+            sources = []
     result = llm_client.generate_response(
         text=sanitized["masked_text"],
         category=request.category,
         urgency=request.urgency,
-        snippets=[source.model_dump() for source in request.relevant_sources]
+        snippets=[
+            source.model_dump() if isinstance(source, SourceItem) else source
+            for source in sources
+        ]
     )
     return GenerateResponse(
         action_plan=result["action_plan"],
         customer_reply_draft=result["customer_reply_draft"],
-        risk_flags=result["risk_flags"],
+        risk_flags=list(dict.fromkeys(result["risk_flags"] + risk_flags)),
         sources=result["sources"]
     )
 
